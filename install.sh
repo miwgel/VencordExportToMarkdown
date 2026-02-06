@@ -46,18 +46,11 @@ discord_running() {
     pgrep -i discord &>/dev/null
 }
 
+# Vencord's dev install hardcodes the dist/ path into Discord's app.asar,
+# so it must persist. We build in a fixed location and clean up everything
+# except dist/ after injection (~1MB kept vs ~200MB during build).
+VENCORD_DIR="$HOME/.vencord-export"
 TOTAL_STEPS=5
-VENCORD_DIR=""
-CLEANUP_VENCORD=false
-
-cleanup() {
-    if [ "$CLEANUP_VENCORD" = true ] && [ -n "$VENCORD_DIR" ] && [ -d "$VENCORD_DIR" ]; then
-        info "Cleaning up build files..."
-        rm -rf "$VENCORD_DIR"
-        success "Build files removed"
-    fi
-}
-trap cleanup EXIT
 
 # Banner
 echo ""
@@ -118,8 +111,10 @@ fi
 
 step 2 "Setting up Vencord build environment"
 
-VENCORD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/vencord-build.XXXXXX")
-CLEANUP_VENCORD=true
+if [ -d "$VENCORD_DIR" ]; then
+    info "Removing previous build at $VENCORD_DIR..."
+    rm -rf "$VENCORD_DIR"
+fi
 
 info "Cloning Vencord source..."
 git clone --depth 1 --quiet https://github.com/Vendicated/Vencord.git "$VENCORD_DIR"
@@ -181,6 +176,11 @@ fi
 
 info "Injecting into Discord..."
 if pnpm inject; then
+    # Clean up build files but keep dist/ (Discord needs it at runtime)
+    info "Cleaning up build files..."
+    find "$VENCORD_DIR" -mindepth 1 -maxdepth 1 ! -name dist -exec rm -rf {} +
+    success "Build files removed (kept ~1MB runtime files in ~/.vencord-export/dist/)"
+
     echo ""
     echo -e "  ${GREEN}${BOLD}All done!${NC}"
     echo ""
