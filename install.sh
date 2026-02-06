@@ -46,88 +46,9 @@ discord_running() {
     pgrep -i discord &>/dev/null
 }
 
-find_discord() {
-    # Common Discord locations by platform
-    local candidates=()
-    if [[ "$OSTYPE" == darwin* ]]; then
-        candidates=(
-            "/Applications/Discord.app/Contents/Resources"
-            "/Applications/Discord PTB.app/Contents/Resources"
-            "/Applications/Discord Canary.app/Contents/Resources"
-            "$HOME/Applications/Discord.app/Contents/Resources"
-        )
-    else
-        candidates=(
-            "/usr/share/discord/resources"
-            "/usr/lib64/discord/resources"
-            "/opt/discord/resources"
-            "/opt/Discord/resources"
-            "/usr/share/discord-ptb/resources"
-            "/usr/share/discord-canary/resources"
-            "/var/lib/flatpak/app/com.discordapp.Discord/current/active/files/discord/resources"
-            "$HOME/.local/share/flatpak/app/com.discordapp.Discord/current/active/files/discord/resources"
-            "/snap/discord/current/usr/share/discord/resources"
-        )
-    fi
-
-    for candidate in "${candidates[@]}"; do
-        if [ -f "$candidate/app.asar" ] || [ -f "$candidate/_app.asar" ]; then
-            echo "$candidate"
-            return 0
-        fi
-    done
-    return 1
-}
-
-# Patch Discord by creating a tiny app.asar that loads the Vencord patcher.
-# This replaces the GUI installer — no window, no download, pure Node.js.
-patch_discord() {
-    local resources_dir="$1"
-    local dist_dir="$2"
-
-    # Back up original app.asar if not already backed up
-    if [ -f "$resources_dir/app.asar" ] && [ ! -f "$resources_dir/_app.asar" ]; then
-        mv "$resources_dir/app.asar" "$resources_dir/_app.asar"
-    elif [ -f "$resources_dir/app.asar" ] && [ -f "$resources_dir/_app.asar" ]; then
-        rm -f "$resources_dir/app.asar"
-    fi
-
-    # Create patched app.asar using Node.js (generates proper asar binary format)
-    node -e "
-const fs = require('fs');
-const distPath = process.argv[1];
-const asarPath = process.argv[2];
-
-const indexJs = 'require(\"' + distPath + '/patcher.js\")';
-const pkg = '{\"name\":\"discord\",\"main\":\"index.js\"}';
-
-const header = JSON.stringify({
-  files: {
-    'index.js': { size: indexJs.length, offset: '0' },
-    'package.json': { size: pkg.length, offset: String(indexJs.length) }
-  }
-});
-
-const headerLen = Buffer.byteLength(header);
-const paddedHeaderLen = Math.ceil(headerLen / 4) * 4;
-const headerPayloadLen = 4 + paddedHeaderLen;
-const headerBufLen = 4 + headerPayloadLen;
-
-const buf = Buffer.alloc(8 + headerBufLen + indexJs.length + pkg.length);
-let off = 0;
-buf.writeUInt32LE(4, off); off += 4;
-buf.writeUInt32LE(headerBufLen, off); off += 4;
-buf.writeUInt32LE(headerPayloadLen, off); off += 4;
-buf.writeUInt32LE(headerLen, off); off += 4;
-buf.write(header, off); off += paddedHeaderLen;
-buf.write(indexJs, off); off += indexJs.length;
-buf.write(pkg, off);
-fs.writeFileSync(asarPath, buf);
-" "$dist_dir" "$resources_dir/app.asar"
-}
-
-# Vencord's dev install needs dist/ to persist at a fixed path.
-# We build here, then clean up everything except dist/ (~1MB kept).
+# Vencord's dev install hardcodes the dist/ path into Discord's app.asar,
+# so it must persist. We build in a fixed location and clean up everything
+# except dist/ after injection (~1MB kept vs ~200MB during build).
 VENCORD_DIR="$HOME/.vencord-export"
 TOTAL_STEPS=5
 
@@ -184,16 +105,6 @@ if command -v pnpm &>/dev/null; then
     success "pnpm $(pnpm --version)"
 else
     ask_install "pnpm" "npm install -g pnpm"
-fi
-
-# Discord
-DISCORD_RESOURCES=""
-if DISCORD_RESOURCES=$(find_discord); then
-    success "Discord found at $DISCORD_RESOURCES"
-else
-    fail "Could not find Discord installation."
-    echo -e "  If Discord is installed in a non-standard location, please open an issue."
-    exit 1
 fi
 
 # ── Clone Vencord source ────────────────────────────────────────
@@ -262,8 +173,8 @@ if discord_running; then
     fi
 fi
 
-info "Patching Discord..."
-if patch_discord "$DISCORD_RESOURCES" "$VENCORD_DIR/dist"; then
+info "Injecting into Discord (the Vencord installer may briefly appear)..."
+if pnpm inject &>/dev/null; then
     # Clean up build files but keep dist/ (Discord needs it at runtime)
     info "Cleaning up build files..."
     find "$VENCORD_DIR" -mindepth 1 -maxdepth 1 ! -name dist -exec rm -rf {} +
@@ -278,6 +189,8 @@ if patch_discord "$DISCORD_RESOURCES" "$VENCORD_DIR/dist"; then
     echo -e "  4. Right-click any channel → ${BOLD}Export to Markdown${NC}"
     echo ""
 else
-    fail "Patching failed. Please open an issue on GitHub."
+    echo ""
+    fail "Injection failed. Make sure Discord is fully closed and try again."
+    echo -e "  To retry, run this installer again."
     exit 1
 fi
