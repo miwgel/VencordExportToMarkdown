@@ -1,6 +1,7 @@
 import { RestAPI } from "@webpack/common";
 
 import { BATCH_SIZE, MAX_RETRIES } from "./constants";
+import { debugLog } from "./debug";
 
 export interface FetchProgress {
     fetched: number;
@@ -15,31 +16,52 @@ export interface FetchOptions {
     batchDelay: number;
     onProgress: ProgressCallback;
     signal: { aborted: boolean };
+    beforeId?: string;
+    afterId?: string;
 }
 
 export async function fetchAllMessages(options: FetchOptions): Promise<any[]> {
     const { channelId, batchDelay, onProgress, signal } = options;
     const allMessages: any[] = [];
-    let beforeId: string | undefined;
+    let currentBeforeId: string | undefined = options.beforeId;
     let hasMore = true;
 
-    while (hasMore && !signal.aborted) {
-        const batch = await fetchBatchWithRetry(channelId, beforeId, signal);
+    await debugLog("INFO", `Starting fetch for channel ${channelId}, batchDelay=${batchDelay}, beforeId=${options.beforeId ?? "none"}, afterId=${options.afterId ?? "none"}`);
 
-        if (signal.aborted) break;
+    while (hasMore && !signal.aborted) {
+        const batch = await fetchBatchWithRetry(channelId, currentBeforeId, signal);
+
+        if (signal.aborted) {
+            await debugLog("INFO", `Fetch aborted after ${allMessages.length} messages`);
+            break;
+        }
 
         if (!batch || batch.length === 0) {
+            await debugLog("DEBUG", "Empty batch received, fetching complete");
             hasMore = false;
             break;
         }
 
+        // If afterId is set, trim messages that are at or before the boundary
+        if (options.afterId) {
+            const afterBigInt = BigInt(options.afterId);
+            const cutoffIndex = batch.findIndex((m: any) => BigInt(m.id) <= afterBigInt);
+            if (cutoffIndex !== -1) {
+                allMessages.push(...batch.slice(0, cutoffIndex));
+                await debugLog("DEBUG", `Hit afterId boundary, trimmed batch at index ${cutoffIndex}`);
+                hasMore = false;
+                break;
+            }
+        }
+
         allMessages.push(...batch);
-        beforeId = batch[batch.length - 1].id;
+        currentBeforeId = batch[batch.length - 1].id;
 
         if (batch.length < BATCH_SIZE) {
             hasMore = false;
         }
 
+        await debugLog("DEBUG", `Batch fetched: ${batch.length} messages, total: ${allMessages.length}, beforeId: ${currentBeforeId}`);
         onProgress({ fetched: allMessages.length, done: false, error: null });
 
         if (hasMore) {
@@ -50,6 +72,7 @@ export async function fetchAllMessages(options: FetchOptions): Promise<any[]> {
     // API returns newest-first; reverse to chronological order
     allMessages.reverse();
 
+    await debugLog("INFO", `Fetch complete: ${allMessages.length} messages total`);
     onProgress({ fetched: allMessages.length, done: true, error: null });
     return allMessages;
 }
@@ -73,9 +96,16 @@ async function fetchBatchWithRetry(
 
             return response.body;
         } catch (error: any) {
+            await debugLog("ERROR", `Fetch error (attempt ${attempt + 1}/${MAX_RETRIES})`, {
+                status: error?.status,
+                message: error?.message,
+                body: error?.body,
+            });
+
             // Rate limited — wait and retry
             if (error?.status === 429) {
                 const retryAfter = (error.body?.retry_after ?? 5) * 1000;
+                await debugLog("WARN", `Rate limited, waiting ${retryAfter}ms`);
                 await sleep(retryAfter);
                 continue;
             }

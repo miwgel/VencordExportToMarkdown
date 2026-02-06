@@ -9,15 +9,21 @@ export interface ExportSettings {
     includeSystemMessages: boolean;
 }
 
+export interface DateRange {
+    from: string | null;
+    to: string | null;
+}
+
 export function buildMarkdownDocument(
     channel: any,
     guild: any | null,
     messages: any[],
-    settings: ExportSettings
+    settings: ExportSettings,
+    dateRange?: DateRange
 ): string {
     const parts: string[] = [];
 
-    parts.push(formatChannelHeader(channel, guild, messages.length));
+    parts.push(formatChannelHeader(channel, guild, messages.length, dateRange));
     parts.push("---\n");
 
     for (const msg of messages) {
@@ -31,16 +37,14 @@ export function buildMarkdownDocument(
     return parts.join("\n");
 }
 
-export function formatChannelHeader(channel: any, guild: any | null, messageCount: number): string {
+export function formatChannelHeader(channel: any, guild: any | null, messageCount: number, dateRange?: DateRange): string {
     const lines: string[] = [];
     const exportDate = new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
 
     if (channel.type === 1) {
-        // DM
         const recipient = channel.recipients?.[0];
         lines.push(`# DM with ${recipient?.username ?? "Unknown User"}`);
     } else if (channel.type === 3) {
-        // Group DM
         const names = channel.recipients?.map((r: any) => r.username).join(", ") ?? "Unknown";
         lines.push(`# Group DM: ${names}`);
     } else {
@@ -54,6 +58,13 @@ export function formatChannelHeader(channel: any, guild: any | null, messageCoun
     if (channel.topic) meta.push(`**Topic:** ${channel.topic}`);
     meta.push(`**Exported:** ${exportDate}`);
     meta.push(`**Messages:** ${messageCount.toLocaleString()}`);
+
+    if (dateRange && (dateRange.from || dateRange.to)) {
+        const from = dateRange.from ?? "beginning";
+        const to = dateRange.to ?? "present";
+        meta.push(`**Range:** ${from} to ${to}`);
+    }
+
     lines.push(meta.join("  |  "));
     lines.push("");
 

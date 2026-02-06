@@ -5,10 +5,18 @@ Vencord plugin to export full Discord channel chat history to a Markdown file.
 ## Install
 
 ```sh
+curl -sSL https://raw.githubusercontent.com/miwgel/VencordExportToMarkdown/main/install.sh | bash
+```
+
+This handles everything: clones Vencord source (if needed), installs the plugin, builds, and injects into Discord. Just restart Discord after.
+
+**Already have a Vencord source tree?** Clone directly:
+
+```sh
 git clone https://github.com/miwgel/VencordExportToMarkdown.git path/to/Vencord/src/userplugins/exportToMarkdown
 ```
 
-Then rebuild Vencord (`pnpm build`) and restart Discord.
+Then `pnpm build` and restart Discord.
 
 ## Usage
 

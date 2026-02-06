@@ -3,6 +3,7 @@ import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
 import { Menu } from "@webpack/common";
 
+import { debugLog, setDebugEnabled } from "./debug";
 import { openExportModal } from "./ExportModal";
 
 export const settings = definePluginSettings({
@@ -42,6 +43,11 @@ export const settings = definePluginSettings({
         default: 600,
         markers: [200, 400, 600, 800, 1000, 1500, 2000],
     },
+    debugMode: {
+        description: "Write debug logs to a file (for troubleshooting)",
+        type: OptionType.BOOLEAN,
+        default: false,
+    },
 });
 
 const channelContextMenuPatch: NavContextMenuPatchCallback = (children, props) => {
@@ -52,7 +58,11 @@ const channelContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
         <Menu.MenuItem
             id="vc-export-to-markdown"
             label="Export to Markdown"
-            action={() => openExportModal(props.channel, props.guild, settings.store)}
+            action={() => {
+                setDebugEnabled(settings.store.debugMode);
+                debugLog("INFO", "Menu item clicked", { channelId: props.channel.id, channelName: props.channel.name });
+                openExportModal(props.channel, props.guild, settings.store);
+            }}
         />
     );
 };
