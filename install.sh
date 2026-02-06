@@ -42,6 +42,10 @@ ask_install() {
     fi
 }
 
+discord_running() {
+    pgrep -i discord &>/dev/null
+}
+
 TOTAL_STEPS=5
 VENCORD_DIR=""
 CLEANUP_VENCORD=false
@@ -117,8 +121,8 @@ step 2 "Setting up Vencord build environment"
 VENCORD_DIR=$(mktemp -d "${TMPDIR:-/tmp}/vencord-build.XXXXXX")
 CLEANUP_VENCORD=true
 
-info "Cloning Vencord source to temporary directory..."
-git clone --depth 1 https://github.com/Vendicated/Vencord.git "$VENCORD_DIR" 2>&1 | tail -1
+info "Cloning Vencord source..."
+git clone --depth 1 --quiet https://github.com/Vendicated/Vencord.git "$VENCORD_DIR"
 success "Vencord source ready"
 
 # ── Install dependencies ────────────────────────────────────────
@@ -127,7 +131,7 @@ step 3 "Installing dependencies"
 
 info "Running pnpm install (this may take a minute)..."
 cd "$VENCORD_DIR"
-pnpm install --frozen-lockfile 2>/dev/null || pnpm install
+pnpm install --frozen-lockfile --silent 2>/dev/null || pnpm install --silent 2>/dev/null || pnpm install
 success "Dependencies installed"
 
 # ── Install plugin ──────────────────────────────────────────────
@@ -135,7 +139,7 @@ success "Dependencies installed"
 step 4 "Installing ExportToMarkdown plugin"
 
 PLUGIN_DIR="$VENCORD_DIR/src/userplugins/exportToMarkdown"
-git clone --depth 1 https://github.com/miwgel/VencordExportToMarkdown.git "$PLUGIN_DIR" 2>&1 | tail -1
+git clone --depth 1 --quiet https://github.com/miwgel/VencordExportToMarkdown.git "$PLUGIN_DIR"
 success "Plugin installed"
 
 # ── Build & inject ──────────────────────────────────────────────
@@ -143,14 +147,10 @@ success "Plugin installed"
 step 5 "Building and injecting into Discord"
 
 info "Building Vencord..."
-pnpm build 2>&1 | tail -1
+pnpm build &>/dev/null
 success "Build complete"
 
 # Check if Discord is running and offer to close it
-discord_running() {
-    pgrep -xi "discord" &>/dev/null
-}
-
 if discord_running; then
     echo ""
     warn "Discord is currently running and must be closed for injection."
@@ -165,9 +165,7 @@ if discord_running; then
         fi
         # Wait for Discord to fully exit
         for i in {1..15}; do
-            if ! discord_running; then
-                break
-            fi
+            discord_running || break
             sleep 1
         done
         if discord_running; then
