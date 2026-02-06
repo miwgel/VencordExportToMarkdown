@@ -2,6 +2,12 @@
 
 Vencord plugin to export full Discord channel chat history to a Markdown file.
 
+<p align="center">
+  <img src="context-menu.png" alt="Right-click context menu" height="120">
+  &nbsp;&nbsp;&nbsp;
+  <img src="export-modal.png" alt="Export modal with date range" height="320">
+</p>
+
 ## Install
 
 ```sh
