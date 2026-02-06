@@ -173,7 +173,11 @@ if discord_running; then
     fi
 fi
 
-info "Injecting into Discord (the Vencord installer may briefly appear)..."
+echo ""
+echo -e "  ${BOLD}The Vencord installer window will now open.${NC}"
+echo -e "  Click ${BOLD}Install${NC} on your Discord installation, then close the window."
+echo ""
+info "Opening Vencord installer..."
 if pnpm inject &>/dev/null; then
     # Clean up build files but keep dist/ (Discord needs it at runtime)
     info "Cleaning up build files..."
