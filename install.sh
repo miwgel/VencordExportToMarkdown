@@ -16,11 +16,20 @@ warn()    { echo -e "  ${YELLOW}!${NC} $1"; }
 fail()    { echo -e "  ${RED}✗${NC} $1"; }
 step()    { echo -e "\n${BOLD}[$1/$TOTAL_STEPS] $2${NC}"; }
 
+# All reads must use /dev/tty to work with curl | bash
+prompt() {
+    local message="$1"
+    local answer
+    read -rp "  $(echo -e "${YELLOW}?${NC}") $message " answer < /dev/tty
+    echo "$answer"
+}
+
 ask_install() {
     local tool="$1"
     local install_cmd="$2"
     echo ""
-    read -rp "  $(echo -e "${YELLOW}?${NC}") $tool is required but not installed. Install it? [Y/n] " answer
+    local answer
+    answer=$(prompt "$tool is required but not installed. Install it? [Y/n]")
     answer="${answer:-y}"
     if [[ "$answer" =~ ^[Yy]$ ]]; then
         info "Installing $tool..."
@@ -59,7 +68,6 @@ step 1 "Checking dependencies"
 if command -v git &>/dev/null; then
     success "git $(git --version | cut -d' ' -f3)"
 else
-    # macOS: git comes with Xcode CLT
     if [[ "$OSTYPE" == darwin* ]]; then
         ask_install "git (via Xcode Command Line Tools)" "xcode-select --install && echo 'Please re-run this script after Xcode CLT finishes installing.' && exit 0"
     else
@@ -77,7 +85,7 @@ else
             ask_install "Node.js (via Homebrew)" "brew install node"
         else
             echo ""
-            read -rp "  $(echo -e "${YELLOW}?${NC}") Node.js is required. Install Homebrew first? [Y/n] " answer
+            answer=$(prompt "Node.js is required. Install Homebrew first? [Y/n]")
             answer="${answer:-y}"
             if [[ "$answer" =~ ^[Yy]$ ]]; then
                 info "Installing Homebrew..."
@@ -138,13 +146,39 @@ info "Building Vencord..."
 pnpm build 2>&1 | tail -1
 success "Build complete"
 
-echo ""
-warn "Discord must be fully closed for injection to work."
-read -rp "  $(echo -e "${YELLOW}?${NC}") Is Discord closed? [Y/n] " answer
-answer="${answer:-y}"
-if [[ ! "$answer" =~ ^[Yy]$ ]]; then
-    warn "Please close Discord and re-run this script."
-    exit 1
+# Check if Discord is running and offer to close it
+discord_running() {
+    pgrep -xi "discord" &>/dev/null
+}
+
+if discord_running; then
+    echo ""
+    warn "Discord is currently running and must be closed for injection."
+    answer=$(prompt "Close Discord now? [Y/n]")
+    answer="${answer:-y}"
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        info "Closing Discord..."
+        if [[ "$OSTYPE" == darwin* ]]; then
+            osascript -e 'quit app "Discord"' 2>/dev/null || killall Discord 2>/dev/null || true
+        else
+            killall Discord 2>/dev/null || killall discord 2>/dev/null || true
+        fi
+        # Wait for Discord to fully exit
+        for i in {1..15}; do
+            if ! discord_running; then
+                break
+            fi
+            sleep 1
+        done
+        if discord_running; then
+            fail "Discord is still running. Please close it manually and re-run this script."
+            exit 1
+        fi
+        success "Discord closed"
+    else
+        warn "Please close Discord manually and re-run this script."
+        exit 1
+    fi
 fi
 
 info "Injecting into Discord..."
