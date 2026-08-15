@@ -1,3 +1,9 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 const DISCORD_EPOCH = 1420070400000n; // Jan 1, 2015 UTC in ms
 
 export function dateToSnowflake(date: Date): string {

@@ -1,5 +1,10 @@
-import { ModalCloseButton, ModalContent, ModalFooter, ModalHeader, ModalRoot, ModalSize, openModal } from "@utils/modal";
-import { Button, Forms, React, Text, TextInput } from "@webpack/common";
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import { Button, Forms, Modal,openModal, React, Text, TextInput } from "@webpack/common";
 
 import { DatePreset, dateToInputValue, dateToSnowflake, endOfDay, getPresetDateRange, inputValueToDate } from "./dateUtils";
 import { debugLog } from "./debug";
@@ -30,7 +35,7 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
     channel: any;
     guild: any | null;
     settingsStore: PluginSettingsStore;
-    rootProps: Record<string, any>;
+    rootProps: any;
 }) {
     const [status, setStatus] = React.useState<ExportStatus>("config");
     const [activePreset, setActivePreset] = React.useState<DatePreset>("all");
@@ -90,7 +95,7 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
             const messages = await fetchAllMessages({
                 channelId: channel.id,
                 batchDelay: settingsStore.batchDelay,
-                onProgress: (p) => setProgress(p),
+                onProgress: p => setProgress(p),
                 signal: abortRef.current,
                 beforeId,
                 afterId,
@@ -170,15 +175,31 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
     const channelLabel = channel.name ? `#${channel.name}` : "DM";
 
     return (
-        <ModalRoot {...rootProps} size={ModalSize.SMALL}>
-            <ModalHeader>
-                <Text variant="heading-lg/semibold" style={{ flexGrow: 1 }}>
-                    Export to Markdown
-                </Text>
-                <ModalCloseButton onClick={rootProps.onClose} />
-            </ModalHeader>
-
-            <ModalContent style={{ padding: "16px" }}>
+        <Modal
+            {...rootProps}
+            size="sm"
+            title="Export to Markdown"
+            preview={
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", width: "100%" }}>
+                    {status === "config" && (
+                        <Button color={Button.Colors.BRAND} onClick={startExport}>Start Export</Button>
+                    )}
+                    {status === "fetching" && (
+                        <Button color={Button.Colors.RED} onClick={handleCancel}>Cancel</Button>
+                    )}
+                    {(status === "done" || status === "error" || status === "cancelled") && (
+                        <Button color={Button.Colors.PRIMARY} look={Button.Looks.LINK} onClick={rootProps.onClose}>Close</Button>
+                    )}
+                    {status === "done" && (
+                        <Button color={Button.Colors.PRIMARY} look={Button.Looks.LINK} onClick={handleCopy}>Copy to Clipboard</Button>
+                    )}
+                    {status === "done" && (
+                        <Button color={Button.Colors.BRAND} onClick={handleDownload}>Download</Button>
+                    )}
+                </div>
+            }
+        >
+            <div style={{ padding: "16px" }}>
                 <Forms.FormTitle>
                     Channel: {channelLabel}
                 </Forms.FormTitle>
@@ -196,7 +217,7 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
                                     key={key}
                                     size={Button.Sizes.SMALL}
                                     color={activePreset === key ? Button.Colors.BRAND : Button.Colors.PRIMARY}
-                                    look={activePreset === key ? Button.Looks.FILLED : Button.Looks.OUTLINED}
+                                    look={activePreset === key ? Button.Looks.FILLED : Button.Looks.LINK}
                                     onClick={() => handlePresetClick(key)}
                                 >
                                     {label}
@@ -257,42 +278,8 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
                         )}
                     </>
                 )}
-            </ModalContent>
-
-            <ModalFooter>
-                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", width: "100%" }}>
-                    {status === "config" && (
-                        <Button color={Button.Colors.BRAND} onClick={startExport}>
-                            Start Export
-                        </Button>
-                    )}
-                    {status === "fetching" && (
-                        <Button color={Button.Colors.RED} onClick={handleCancel}>
-                            Cancel
-                        </Button>
-                    )}
-                    {(status === "done" || status === "error" || status === "cancelled") && (
-                        <Button
-                            color={Button.Colors.PRIMARY}
-                            look={Button.Looks.LINK}
-                            onClick={rootProps.onClose}
-                        >
-                            Close
-                        </Button>
-                    )}
-                    {status === "done" && (
-                        <Button color={Button.Colors.PRIMARY} look={Button.Looks.OUTLINED} onClick={handleCopy}>
-                            Copy to Clipboard
-                        </Button>
-                    )}
-                    {status === "done" && (
-                        <Button color={Button.Colors.BRAND} onClick={handleDownload}>
-                            Download
-                        </Button>
-                    )}
-                </div>
-            </ModalFooter>
-        </ModalRoot>
+            </div>
+        </Modal>
     );
 }
 
