@@ -1,3 +1,9 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import { MESSAGE_TYPE_TEMPLATES, SYSTEM_MESSAGE_TYPES } from "./constants";
 
 export interface ExportSettings {

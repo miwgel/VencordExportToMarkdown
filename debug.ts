@@ -1,8 +1,13 @@
-import { Native } from "@utils/types";
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
 
-import type * as NativeModule from "./native";
-
-const native = VencordNative.pluginHelpers.ExportToMarkdown as Native<typeof NativeModule>;
+const native = VencordNative.pluginHelpers.ExportToMarkdown as unknown as {
+    initLog(): Promise<string>;
+    debugLog(level: string, message: string, data?: string): Promise<void>;
+};
 
 let enabled = false;
 let initialized = false;

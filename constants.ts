@@ -1,3 +1,9 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 export const BATCH_SIZE = 100;
 export const DEFAULT_BATCH_DELAY = 600;
 export const MAX_RETRIES = 3;
@@ -17,7 +23,7 @@ export const MESSAGE_TYPE_TEMPLATES: Record<number, (msg: any) => string> = {
     10: msg => `*${msg.author.username} boosted the server! Server has achieved **Level 2**!*`,
     11: msg => `*${msg.author.username} boosted the server! Server has achieved **Level 3**!*`,
     12: msg => `*${msg.author.username} added **${msg.content}** to this channel.*`,
-    14: msg => `*This server has been removed from Server Discovery.*`,
-    15: msg => `*This server is eligible for Server Discovery again.*`,
+    14: msg => "*This server has been removed from Server Discovery.*",
+    15: msg => "*This server is eligible for Server Discovery again.*",
     22: msg => `*${msg.author.username} sent a reminder to check out the server.*`,
 };

@@ -1,3 +1,9 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2026 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
 import { RestAPI } from "@webpack/common";
 
 import { BATCH_SIZE, MAX_RETRIES } from "./constants";
