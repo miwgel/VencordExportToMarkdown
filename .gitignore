@@ -6,3 +6,9 @@ Thumbs.db
 .idea/
 .vscode/
 *.log
+.vencord-build/
+.backups/
+node_modules/
+.env
+.env.*
+*-export-*.md

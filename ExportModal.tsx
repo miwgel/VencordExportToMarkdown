@@ -1,12 +1,12 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
+ * ExportToMarkdown
+ * SPDX-License-Identifier: MIT
  */
 
-import { Button, Forms, Modal,openModal, React, Text, TextInput } from "@webpack/common";
+import type { RenderModalProps } from "@vencord/discord-types";
+import { Button, Forms, MessageStore, Modal, openModal, React, Text, TextInput } from "@webpack/common";
 
-import { DatePreset, dateToInputValue, dateToSnowflake, endOfDay, getPresetDateRange, inputValueToDate } from "./dateUtils";
+import { DatePreset, dateToInputValue, getDateBoundaries, getPresetDateRange } from "./dateUtils";
 import { debugLog } from "./debug";
 import { fetchAllMessages, FetchProgress } from "./fetchMessages";
 import { buildMarkdownDocument, ExportSettings } from "./formatMarkdown";
@@ -35,16 +35,21 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
     channel: any;
     guild: any | null;
     settingsStore: PluginSettingsStore;
-    rootProps: any;
+    rootProps: RenderModalProps;
 }) {
     const [status, setStatus] = React.useState<ExportStatus>("config");
-    const [activePreset, setActivePreset] = React.useState<DatePreset>("all");
+    const [activePreset, setActivePreset] = React.useState<DatePreset | null>("all");
     const [fromDate, setFromDate] = React.useState("");
     const [toDate, setToDate] = React.useState("");
     const [progress, setProgress] = React.useState<FetchProgress>({ fetched: 0, done: false, error: null });
     const [errorMessage, setErrorMessage] = React.useState<string | null>(null);
     const [markdownBlob, setMarkdownBlob] = React.useState<Blob | null>(null);
-    const abortRef = React.useRef({ aborted: false });
+    const abortRef = React.useRef(new AbortController());
+    React.useEffect(() => () => abortRef.current.abort(), []);
+    const handleClose = () => {
+        abortRef.current.abort();
+        rootProps.onClose();
+    };
 
     const handlePresetClick = (preset: DatePreset) => {
         setActivePreset(preset);
@@ -55,30 +60,27 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
 
     const handleFromChange = (value: string) => {
         setFromDate(value);
-        setActivePreset(null as any);
+        setActivePreset(null);
     };
 
     const handleToChange = (value: string) => {
         setToDate(value);
-        setActivePreset(null as any);
+        setActivePreset(null);
     };
 
     const startExport = async () => {
+        let boundaries: ReturnType<typeof getDateBoundaries>;
+        try {
+            boundaries = getDateBoundaries(fromDate, toDate);
+        } catch (err: any) {
+            setErrorMessage(err.message);
+            return;
+        }
+        const { beforeId, afterId } = boundaries;
+        setErrorMessage(null);
         setStatus("fetching");
-        abortRef.current = { aborted: false };
-
-        let beforeId: string | undefined;
-        let afterId: string | undefined;
-
-        const fromParsed = inputValueToDate(fromDate);
-        const toParsed = inputValueToDate(toDate);
-
-        if (toParsed) {
-            beforeId = dateToSnowflake(endOfDay(toParsed));
-        }
-        if (fromParsed) {
-            afterId = dateToSnowflake(fromParsed);
-        }
+        abortRef.current = new AbortController();
+        const controller = abortRef.current;
 
         await debugLog("INFO", "Export started", {
             channelId: channel.id,
@@ -96,18 +98,19 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
                 channelId: channel.id,
                 batchDelay: settingsStore.batchDelay,
                 onProgress: p => setProgress(p),
-                signal: abortRef.current,
+                signal: controller.signal,
                 beforeId,
                 afterId,
             });
 
-            if (abortRef.current.aborted) {
+            if (controller.signal.aborted) {
                 setStatus("cancelled");
                 return;
             }
 
             setStatus("formatting");
             await debugLog("INFO", `Formatting ${messages.length} messages`);
+            if (controller.signal.aborted) return;
 
             const exportSettings: ExportSettings = {
                 includeEmbeds: settingsStore.includeEmbeds,
@@ -119,13 +122,20 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
             };
 
             const dateRange = { from: fromDate || null, to: toDate || null };
-            const markdown = buildMarkdownDocument(channel, guild, messages, exportSettings, dateRange);
+            // Edit history is local MessageLogger state; Discord's REST API has none.
+            const exportMessages = settingsStore.includeEditHistory ? messages.map(msg => ({
+                ...msg,
+                editHistory: (MessageStore.getMessage(channel.id, msg.id) as { editHistory?: any[]; } | undefined)?.editHistory,
+            })) : messages;
+            const markdown = buildMarkdownDocument(channel, guild, exportMessages, exportSettings, dateRange);
             const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
 
             await debugLog("INFO", `Export done, markdown size: ${markdown.length} chars`);
+            if (controller.signal.aborted) return;
             setMarkdownBlob(blob);
             setStatus("done");
         } catch (err: any) {
+            if (controller.signal.aborted) return;
             await debugLog("ERROR", "Export failed", { message: err?.message, stack: err?.stack });
             setErrorMessage(err?.message ?? "Unknown error occurred");
             setStatus("error");
@@ -134,7 +144,7 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
 
     const handleDownload = () => {
         if (!markdownBlob) return;
-        const channelName = channel.name || `dm-${channel.id}`;
+        const channelName = (channel.name || `dm-${channel.id}`).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_");
         let dateSuffix: string;
         if (fromDate && toDate) {
             dateSuffix = `${fromDate}_to_${toDate}`;
@@ -162,13 +172,17 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
 
     const handleCopy = async () => {
         if (!markdownBlob) return;
-        const text = await markdownBlob.text();
-        navigator.clipboard.writeText(text);
-        rootProps.onClose();
+        try {
+            const text = await markdownBlob.text();
+            await navigator.clipboard.writeText(text);
+            handleClose();
+        } catch {
+            setErrorMessage("Could not copy to clipboard. Try Download instead.");
+        }
     };
 
     const handleCancel = () => {
-        abortRef.current.aborted = true;
+        abortRef.current.abort();
         setStatus("cancelled");
     };
 
@@ -177,6 +191,7 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
     return (
         <Modal
             {...rootProps}
+            onClose={handleClose}
             size="sm"
             title="Export to Markdown"
             preview={
@@ -188,7 +203,7 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
                         <Button color={Button.Colors.RED} onClick={handleCancel}>Cancel</Button>
                     )}
                     {(status === "done" || status === "error" || status === "cancelled") && (
-                        <Button color={Button.Colors.PRIMARY} look={Button.Looks.LINK} onClick={rootProps.onClose}>Close</Button>
+                        <Button color={Button.Colors.PRIMARY} look={Button.Looks.LINK} onClick={handleClose}>Close</Button>
                     )}
                     {status === "done" && (
                         <Button color={Button.Colors.PRIMARY} look={Button.Looks.LINK} onClick={handleCopy}>Copy to Clipboard</Button>
@@ -204,6 +219,9 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
                     Channel: {channelLabel}
                 </Forms.FormTitle>
 
+                {errorMessage && status !== "error" && (
+                    <Text variant="text-sm/normal" role="alert">{errorMessage}</Text>
+                )}
                 {/* Config phase */}
                 {status === "config" && (
                     <>
@@ -230,6 +248,7 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
                                 <Forms.FormTitle tag="h5">From</Forms.FormTitle>
                                 <TextInput
                                     type="date"
+                                    min="2015-01-01"
                                     value={fromDate}
                                     onChange={handleFromChange}
                                     style={{ colorScheme: document.documentElement.classList.contains("theme-dark") ? "dark" : "light" }}
@@ -239,6 +258,7 @@ function ExportModal({ channel, guild, settingsStore, rootProps }: {
                                 <Forms.FormTitle tag="h5">To</Forms.FormTitle>
                                 <TextInput
                                     type="date"
+                                    min="2015-01-01"
                                     value={toDate}
                                     onChange={handleToChange}
                                     style={{ colorScheme: document.documentElement.classList.contains("theme-dark") ? "dark" : "light" }}

@@ -1,7 +1,6 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
+ * ExportToMarkdown
+ * SPDX-License-Identifier: MIT
  */
 
 import { MESSAGE_TYPE_TEMPLATES, SYSTEM_MESSAGE_TYPES } from "./constants";
@@ -32,8 +31,9 @@ export function buildMarkdownDocument(
     parts.push(formatChannelHeader(channel, guild, messages.length, dateRange));
     parts.push("---\n");
 
+    const messageIndex = new Map(messages.map(msg => [msg.id, msg]));
     for (const msg of messages) {
-        const formatted = formatMessage(msg, messages, settings);
+        const formatted = formatMessage(msg, messageIndex, settings);
         if (formatted) {
             parts.push(formatted);
             parts.push("\n---\n");
@@ -51,7 +51,7 @@ export function formatChannelHeader(channel: any, guild: any | null, messageCoun
         const recipient = channel.recipients?.[0];
         lines.push(`# DM with ${recipient?.username ?? "Unknown User"}`);
     } else if (channel.type === 3) {
-        const names = channel.recipients?.map((r: any) => r.username).join(", ") ?? "Unknown";
+        const names = channel.name || channel.recipients?.map((r: any) => r.globalName || r.username).join(", ") || "Unknown";
         lines.push(`# Group DM: ${names}`);
     } else {
         lines.push(`# #${channel.name}`);
@@ -77,7 +77,7 @@ export function formatChannelHeader(channel: any, guild: any | null, messageCoun
     return lines.join("\n");
 }
 
-export function formatMessage(msg: any, allMessages: any[], settings: ExportSettings): string | null {
+export function formatMessage(msg: any, allMessages: any[] | Map<string, any>, settings: ExportSettings): string | null {
     // System messages
     if (SYSTEM_MESSAGE_TYPES.has(msg.type)) {
         if (!settings.includeSystemMessages) return null;
@@ -89,19 +89,23 @@ export function formatMessage(msg: any, allMessages: any[], settings: ExportSett
     // Message header
     const timestamp = formatTimestamp(msg.timestamp);
     const pinIndicator = settings.includePinIndicator && msg.pinned ? " \ud83d\udccc" : "";
-    const editedIndicator = msg.editedTimestamp ? " (edited)" : "";
-    const displayName = msg.author.globalName || msg.author.username;
+    const editedIndicator = (msg.edited_timestamp ?? msg.editedTimestamp) ? " (edited)" : "";
+    const displayName = msg.author.global_name || msg.author.globalName || msg.author.username;
     parts.push(`### ${displayName} \u2014 ${timestamp}${editedIndicator}${pinIndicator}`);
     parts.push("");
 
     // Reply reference
-    if (msg.type === 19 && msg.messageReference) {
-        const referencedMsg = allMessages.find((m: any) => m.id === msg.messageReference.message_id);
+    const reference = msg.message_reference ?? msg.messageReference;
+    if (msg.type === 19 && reference) {
+        const referenceId = reference.message_id ?? reference.messageId;
+        const referencedMsg = msg.referenced_message ?? (allMessages instanceof Map
+            ? allMessages.get(referenceId)
+            : allMessages.find((m: any) => m.id === referenceId));
         if (referencedMsg) {
-            const refName = referencedMsg.author.globalName || referencedMsg.author.username;
-            const refContent = referencedMsg.content.length > 200
+            const refName = referencedMsg.author.global_name || referencedMsg.author.globalName || referencedMsg.author.username;
+            const refContent = (referencedMsg.content ?? "").length > 200
                 ? referencedMsg.content.slice(0, 200) + "..."
-                : referencedMsg.content;
+                : referencedMsg.content ?? "";
             parts.push(`> **Replying to ${refName}:**`);
             for (const line of refContent.split("\n")) {
                 parts.push(`> ${line}`);

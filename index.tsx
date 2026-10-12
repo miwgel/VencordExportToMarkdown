@@ -1,13 +1,12 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
+ * ExportToMarkdown
+ * SPDX-License-Identifier: MIT
  */
 
 import { findGroupChildrenByChildId, NavContextMenuPatchCallback } from "@api/ContextMenu";
 import { definePluginSettings } from "@api/Settings";
 import definePlugin, { OptionType } from "@utils/types";
-import { Menu } from "@webpack/common";
+import { GuildStore, Menu, UserStore } from "@webpack/common";
 
 import { debugLog, setDebugEnabled } from "./debug";
 import { openExportModal } from "./ExportModal";
@@ -57,7 +56,9 @@ export const settings = definePluginSettings({
 });
 
 const channelContextMenuPatch: NavContextMenuPatchCallback = (children, props) => {
-    if (!props?.channel) return;
+    const channel = props?.channel;
+    // Categories and forum/media parents do not have a message history endpoint.
+    if (!channel || [4, 15, 16].includes(channel.type)) return;
 
     const group = findGroupChildrenByChildId("mark-channel-read", children) ?? children;
     group.push(
@@ -67,7 +68,12 @@ const channelContextMenuPatch: NavContextMenuPatchCallback = (children, props) =
             action={() => {
                 setDebugEnabled(settings.store.debugMode);
                 debugLog("INFO", "Menu item clicked", { channelId: props.channel.id, channelName: props.channel.name });
-                openExportModal(props.channel, props.guild, settings.store);
+                const exportChannel = {
+                    ...channel,
+                    recipients: channel.recipients?.map((recipient: any) =>
+                        typeof recipient === "string" ? UserStore.getUser(recipient) ?? { username: recipient } : recipient),
+                };
+                openExportModal(exportChannel, props.guild ?? GuildStore.getGuild(channel.guild_id), settings.store);
             }}
         />
     );
@@ -80,5 +86,8 @@ export default definePlugin({
     settings,
     contextMenus: {
         "channel-context": channelContextMenuPatch,
+        "thread-context": channelContextMenuPatch,
+        "user-context": channelContextMenuPatch,
+        "gdm-context": channelContextMenuPatch,
     },
 });

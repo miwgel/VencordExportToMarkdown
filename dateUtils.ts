@@ -1,7 +1,6 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
+ * ExportToMarkdown
+ * SPDX-License-Identifier: MIT
  */
 
 const DISCORD_EPOCH = 1420070400000n; // Jan 1, 2015 UTC in ms
@@ -54,10 +53,28 @@ export function dateToInputValue(date: Date | null): string {
 
 export function inputValueToDate(value: string): Date | null {
     if (!value) return null;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) throw new Error("Enter a valid date.");
     const [y, m, d] = value.split("-").map(Number);
-    return new Date(y, m - 1, d);
+    const date = new Date(y, m - 1, d);
+    if (date.getFullYear() !== y || date.getMonth() !== m - 1 || date.getDate() !== d)
+        throw new Error("Enter a valid date.");
+    return date;
 }
 
 export function endOfDay(date: Date): Date {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate(), 23, 59, 59, 999);
+}
+
+export function getDateBoundaries(from: string, to: string): { beforeId?: string; afterId?: string; } {
+    const start = inputValueToDate(from);
+    const end = inputValueToDate(to);
+    if (start && end && start > end) throw new Error("From date must be on or before To date.");
+    if ((start && start.getFullYear() < 2015) || (end && end.getFullYear() < 2015))
+        throw new Error("Discord dates must be January 1, 2015 or later.");
+    // Both API boundaries are exclusive. Include the entire selected local day,
+    // including its first and last millisecond (also across DST transitions).
+    return {
+        afterId: start ? (BigInt(dateToSnowflake(start)) - 1n).toString() : undefined,
+        beforeId: end ? dateToSnowflake(new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1)) : undefined,
+    };
 }

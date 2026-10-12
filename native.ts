@@ -1,23 +1,23 @@
 /*
- * Vencord, a Discord client mod
- * Copyright (c) 2026 Vendicated and contributors
- * SPDX-License-Identifier: GPL-3.0-or-later
+ * ExportToMarkdown
+ * SPDX-License-Identifier: MIT
  */
 
+import { app, IpcMainInvokeEvent } from "electron";
 import { appendFileSync, writeFileSync } from "fs";
 import { join } from "path";
 
-const LOG_FILE = join(__dirname, "export-debug.log");
+const logFile = () => join(app.getPath("userData"), "export-to-markdown-debug.log");
 
-export function initLog(_: null) {
-    writeFileSync(LOG_FILE, `[ExportToMarkdown] Debug log started at ${new Date().toISOString()}\n`);
-    return LOG_FILE;
+export function initLog(_: IpcMainInvokeEvent) {
+    writeFileSync(logFile(), `[ExportToMarkdown] Debug log started at ${new Date().toISOString()}\n`);
+    return logFile();
 }
 
-export function debugLog(_: null, level: string, message: string, data?: string) {
+export function debugLog(_: IpcMainInvokeEvent, level: string, message: string, data?: string) {
     const timestamp = new Date().toISOString();
     let line = `[${timestamp}] [${level}] ${message}`;
     if (data) line += `\n  ${data}`;
     line += "\n";
-    appendFileSync(LOG_FILE, line);
+    appendFileSync(logFile(), line);
 }
